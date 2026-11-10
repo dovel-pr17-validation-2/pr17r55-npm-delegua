@@ -1,0 +1,32 @@
+import { SimboloInterface, VisitanteComumInterface } from '../interfaces';
+import { ConstrutoInterface } from '../interfaces/construtos/construto-interface';
+
+/**
+ * Este construto é emitido pelo Avaliador Sintático, e indica para as
+ * próximas etapas que este elemento é uma referência de função, mas
+ * que não pode ser resolvido em tempo de avaliação sintática.
+ */
+export class ArgumentoReferenciaFuncao implements ConstrutoInterface {
+    linha: number;
+    hashArquivo: number;
+    simboloFuncao: SimboloInterface;
+    idFuncao: string | null;
+
+    constructor(hashArquivo: number, linha: number, simboloFuncao: SimboloInterface) {
+        this.linha = linha;
+        this.hashArquivo = hashArquivo;
+        this.simboloFuncao = simboloFuncao;
+    }
+
+    async aceitar(visitante: VisitanteComumInterface): Promise<any> {
+        return visitante.visitarExpressaoArgumentoReferenciaFuncao(this);
+    }
+
+    paraTexto(): string {
+        return `<argumento-referência-função nomeFunção=${this.simboloFuncao.lexema} />`;
+    }
+
+    paraTextoSaida(): string {
+        throw new Error('Método não implementado.');
+    }
+}

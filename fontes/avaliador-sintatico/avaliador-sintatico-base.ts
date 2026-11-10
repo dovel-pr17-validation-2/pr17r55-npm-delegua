@@ -1,0 +1,512 @@
+﻿import {
+    Binario,
+    Chamada,
+    FuncaoConstruto,
+    Leia,
+    Logico,
+    TuplaN,
+    Unario,
+} from '../construtos';
+import {
+    Bloco,
+    Classe,
+    Continua,
+    Declaracao,
+    Enquanto,
+    Escreva,
+    Expressao,
+    FuncaoDeclaracao,
+    Para,
+    ParaCada,
+    Retorna,
+    Se,
+    Sustar,
+    Tente,
+    Var,
+} from '../declaracoes';
+import { AvaliadorSintaticoInterface, ParametroInterface, SimboloInterface } from '../interfaces';
+import { ConstrutoInterface } from '../interfaces/construtos/construto-interface';
+import { RetornoAvaliadorSintaticoInterface, RetornoLexadorInterface } from '../interfaces/retornos';
+import { ErroAvaliadorSintatico } from './erro-avaliador-sintatico';
+
+import tiposDeSimbolos from '../tipos-de-simbolos/comum';
+
+/**
+ * O Avaliador Sintático Base é uma tentativa de mapear métodos em comum
+ * entre todos os outros Avaliadores Sintáticos. Depende de um dicionário
+ * de tipos de símbolos comuns entre todos os dialetos.
+ */
+export abstract class AvaliadorSintaticoBase implements AvaliadorSintaticoInterface<
+    SimboloInterface,
+    Declaracao
+> {
+    simbolos: SimboloInterface[] = [];
+    erros: ErroAvaliadorSintatico[] = [];
+
+    hashArquivo: number = -1;
+    atual: number = 0;
+    blocos: number = 0;
+
+    erro(
+        simbolo: SimboloInterface,
+        mensagemDeErro: string,
+        codigoDiagnostico?: string,
+        simboloRelacionado?: SimboloInterface
+    ): ErroAvaliadorSintatico {
+        // Chamadores costumam passar `this.simbolos[this.atual]` diretamente. Se o
+        // cursor já passou do último símbolo (ex.: código termina logo após um
+        // token sem ';' ou EOF explícito), esse acesso devolve `undefined`, e o
+        // construtor de `ErroAvaliadorSintatico` quebraria ao ler `simbolo.hashArquivo`.
+        // Mesma lógica de fallback já usada em `consumir()`.
+        if (!simbolo) {
+            simbolo =
+                this.simbolos.length === 0
+                    ? ({ hashArquivo: this.hashArquivo, linha: 1 } as SimboloInterface)
+                    : this.simbolos[this.simbolos.length - 1];
+        }
+
+        const excecao = new ErroAvaliadorSintatico(
+            simbolo,
+            mensagemDeErro,
+            codigoDiagnostico,
+            simboloRelacionado
+        );
+        return excecao;
+    }
+
+    protected consumir(tipo: string, mensagemDeErro: string): SimboloInterface {
+        if (this.verificarTipoSimboloAtual(tipo)) return this.avancarEDevolverAnterior();
+        let simboloErro: SimboloInterface = this.simbolos[this.atual];
+        if (this.simbolos.length === 0) {
+            simboloErro = {
+                hashArquivo: this.hashArquivo,
+                linha: 1,
+            } as SimboloInterface;
+        } else if (this.atual >= this.simbolos.length) {
+            simboloErro = this.simbolos[this.simbolos.length - 1];
+        }
+
+        throw this.erro(simboloErro, mensagemDeErro);
+    }
+
+    protected simboloAnterior(): SimboloInterface {
+        if (this.atual === 0) {
+            throw new Error('Este é o primeiro símbolo da sequência vinda do Lexador.');
+        }
+
+        return this.simbolos[this.atual - 1];
+    }
+
+    protected verificarTipoSimboloAtual(tipo: string): boolean {
+        if (this.estaNoFinal()) return false;
+        return this.simbolos[this.atual].tipo === tipo;
+    }
+
+    protected verificarTipoProximoSimbolo(tipo: string): boolean {
+        if (this.atual + 1 >= this.simbolos.length) return false;
+        return this.simbolos[this.atual + 1].tipo === tipo;
+    }
+
+    protected estaNoFinal(): boolean {
+        return this.atual === this.simbolos.length;
+    }
+
+    protected avancarEDevolverAnterior(): SimboloInterface {
+        if (!this.estaNoFinal()) this.atual += 1;
+        return this.simbolos[this.atual - 1];
+    }
+
+    protected verificarSeSimboloAtualEIgualA(...argumentos: string[]): boolean {
+        for (let i = 0; i < argumentos.length; i++) {
+            const tipoAtual = argumentos[i];
+            if (this.verificarTipoSimboloAtual(tipoAtual)) {
+                this.avancarEDevolverAnterior();
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Avança o cursor por quaisquer símbolos de comentário (de linha ou
+     * multilinha) consecutivos, descartando-os. Usado em construtos onde
+     * comentários podem aparecer entre elementos, mas não fazem sentido
+     * como parte da árvore sintática resultante (ex.: dicionários).
+     */
+    protected pularComentarios(): void {
+        // Os tipos de símbolo de comentário não fazem parte do conjunto reduzido
+        // de `tiposDeSimbolos` importado nesta classe base, por isso são usados
+        // aqui como literais de texto (seus valores são idênticos às chaves do
+        // conjunto completo, definido em `tipos-de-simbolos/delegua.ts`).
+        while (
+            this.simbolos[this.atual].tipo === 'COMENTARIO' ||
+            this.simbolos[this.atual].tipo === 'LINHA_COMENTARIO'
+        ) {
+            this.avancarEDevolverAnterior();
+        }
+    }
+
+    /**
+     * Os métodos a seguir devem ser implementados nos seus respectivos
+     * dialetos por diferentes razões: seja porque o dialeto correspondente
+     * tem uma abordagem diferente sobre entrada e saída, seja porque a
+     * funcionalidade sequer existe, mas é suprimida por outra.
+     *
+     * Esses métodos não precisam ser expostos. A recomendação geral é
+     * implementá-los como `protected`.
+     */
+    protected abstract atribuir(): Promise<ConstrutoInterface>; // `atribuir()` deve chamar `ou()` ou algum outro método unário ou
+    // binário de visita na implementação.
+    protected abstract blocoEscopo(): Promise<Declaracao[]>;
+    protected abstract chamar(): Promise<ConstrutoInterface>;
+    protected abstract corpoDaFuncao(tipo: string): Promise<FuncaoConstruto>;
+    protected abstract declaracaoEnquanto(): Promise<Enquanto>;
+    protected abstract declaracaoEscreva(): Promise<Escreva>;
+    protected abstract declaracaoPara(): Promise<Para | ParaCada>;
+    protected abstract declaracaoSe(): Promise<Se>;
+    protected abstract expressaoLeia(): Promise<Leia>;
+    protected abstract primario(): Promise<ConstrutoInterface>;
+    protected abstract resolverDeclaracaoForaDeBloco(): Promise<
+        Declaracao | Declaracao[] | undefined
+    >;
+
+    protected async declaracaoBloco(): Promise<Bloco> {
+        const simboloInicioBloco: SimboloInterface = this.consumir(
+            tiposDeSimbolos.CHAVE_ESQUERDA,
+            "Esperado '{' para abertura de bloco."
+        );
+        return new Bloco(
+            simboloInicioBloco.hashArquivo,
+            Number(simboloInicioBloco.linha),
+            await this.blocoEscopo()
+        );
+    }
+
+    protected async finalizarChamada(entidadeChamada: ConstrutoInterface): Promise<Chamada> {
+        const argumentos: Array<ConstrutoInterface> = [];
+
+        if (!this.verificarTipoSimboloAtual(tiposDeSimbolos.PARENTESE_DIREITO)) {
+            do {
+                // `apply()` em JavaScript aceita até 255 parâmetros.
+                if (argumentos.length >= 255) {
+                    throw this.erro(
+                        this.simbolos[this.atual],
+                        'Não pode haver mais de 255 argumentos.'
+                    );
+                }
+                argumentos.push(await this.expressao());
+            } while (this.verificarSeSimboloAtualEIgualA(tiposDeSimbolos.VIRGULA));
+        }
+
+        this.consumir(tiposDeSimbolos.PARENTESE_DIREITO, "Esperado ')' após os argumentos.");
+        return new Chamada(this.hashArquivo, entidadeChamada, argumentos);
+    }
+
+    protected async unario(): Promise<ConstrutoInterface> {
+        if (
+            this.verificarSeSimboloAtualEIgualA(tiposDeSimbolos.NEGACAO, tiposDeSimbolos.SUBTRACAO)
+        ) {
+            const operador = this.simbolos[this.atual - 1];
+            const direito = await this.exponenciacao();
+            return Promise.resolve(new Unario(this.hashArquivo, operador, direito, 'ANTES'));
+        }
+
+        return await this.chamar();
+    }
+
+    /**
+     * A exponenciacão é uma exceção na ordem de avaliação (resolve primeiro à direita).
+     * Por isso `direito` chama `exponenciacao()`, e não `unario()`.
+     * @returns {Binario} A expressão binária na forma do construto `Binario`.
+     */
+    protected async exponenciacao(): Promise<ConstrutoInterface> {
+        let expressao = await this.unario();
+
+        while (this.verificarSeSimboloAtualEIgualA(tiposDeSimbolos.EXPONENCIACAO)) {
+            const operador = this.simbolos[this.atual - 1];
+            const direito = await this.exponenciacao();
+            expressao = new Binario(this.hashArquivo, expressao, operador, direito);
+        }
+
+        return expressao;
+    }
+
+    protected async multiplicar(): Promise<ConstrutoInterface> {
+        let expressao = await this.exponenciacao();
+
+        while (
+            this.verificarSeSimboloAtualEIgualA(
+                tiposDeSimbolos.DIVISAO,
+                tiposDeSimbolos.DIVISAO_INTEIRA,
+                tiposDeSimbolos.MULTIPLICACAO,
+                tiposDeSimbolos.MODULO
+            )
+        ) {
+            const operador = this.simbolos[this.atual - 1];
+            const direito = await this.exponenciacao();
+            expressao = new Binario(this.hashArquivo, expressao, operador, direito);
+        }
+
+        return expressao;
+    }
+
+    protected async adicaoOuSubtracao(): Promise<ConstrutoInterface> {
+        let expressao = await this.multiplicar();
+
+        while (
+            this.verificarSeSimboloAtualEIgualA(tiposDeSimbolos.SUBTRACAO, tiposDeSimbolos.ADICAO)
+        ) {
+            const operador = this.simbolos[this.atual - 1];
+            const direito = await this.multiplicar();
+            expressao = new Binario(this.hashArquivo, expressao, operador, direito);
+        }
+
+        return expressao;
+    }
+
+    /**
+     * Este método é usado por Delégua e alguns dialetos de Portugol que possuem declarações
+     * de múltiplas variáveis na mesma linha.
+     */
+    protected declaracaoDeVariaveis(): Promise<Var[]> {
+        throw new Error('Método não implementado.');
+    }
+
+    protected validacaoComparacao(
+        operador: any,
+        esquerda: ConstrutoInterface,
+        direita: ConstrutoInterface
+    ): void { }
+
+    protected criarConstrutoComparacao(
+        esquerda: ConstrutoInterface,
+        operador: any,
+        direita: ConstrutoInterface
+    ): ConstrutoInterface {
+        return new Binario(this.hashArquivo, esquerda, operador, direita);
+    }
+
+    protected async logicaComumComparacao(
+        metodoProximoNivel: () => Promise<ConstrutoInterface>
+    ): Promise<ConstrutoInterface> {
+        let expressao = await metodoProximoNivel();
+
+        while (
+            this.verificarSeSimboloAtualEIgualA(
+                tiposDeSimbolos.MAIOR,
+                tiposDeSimbolos.MAIOR_IGUAL,
+                tiposDeSimbolos.MENOR,
+                tiposDeSimbolos.MENOR_IGUAL
+            )
+        ) {
+            const operador = this.simboloAnterior
+                ? this.simboloAnterior()
+                : this.simbolos[this.atual - 1];
+            const esquerda = expressao;
+            const direita = await metodoProximoNivel();
+
+            this.validacaoComparacao(operador, esquerda, direita);
+            expressao = this.criarConstrutoComparacao(
+                esquerda,
+                operador,
+                direita
+            );
+        }
+
+        return expressao;
+    }
+
+    protected async comparar(): Promise<ConstrutoInterface> {
+        return await this.logicaComumComparacao(() => this.adicaoOuSubtracao());
+    }
+
+    protected async comparacaoIgualdade(): Promise<ConstrutoInterface> {
+        let expressao = await this.comparar();
+
+        while (
+            this.verificarSeSimboloAtualEIgualA(
+                tiposDeSimbolos.DIFERENTE,
+                tiposDeSimbolos.IGUAL,
+                tiposDeSimbolos.IGUAL_IGUAL
+            )
+        ) {
+            const operador = this.simbolos[this.atual - 1];
+            const direito = await this.comparar();
+            expressao = new Binario(this.hashArquivo, expressao, operador, direito);
+        }
+
+        return expressao;
+    }
+
+    protected async e(): Promise<ConstrutoInterface> {
+        let expressao = await this.comparacaoIgualdade();
+
+        while (this.verificarSeSimboloAtualEIgualA(tiposDeSimbolos.E)) {
+            const operador = this.simbolos[this.atual - 1];
+            const direito = await this.comparacaoIgualdade();
+            expressao = new Logico(this.hashArquivo, expressao, operador, direito);
+        }
+
+        return expressao;
+    }
+
+    protected async ou(): Promise<ConstrutoInterface> {
+        let expressao = await this.e();
+
+        while (this.verificarSeSimboloAtualEIgualA(tiposDeSimbolos.OU)) {
+            const operador = this.simbolos[this.atual - 1];
+            const direito = await this.e();
+            expressao = new Logico(this.hashArquivo, expressao, operador, direito);
+        }
+
+        return expressao;
+    }
+
+    /**
+     * Processa tuplas, que são expressões separadas por vírgula entre parênteses.
+     * Se não houver vírgula, retorna apenas a expressão simples.
+     */
+    protected async tupla(): Promise<ConstrutoInterface> {
+        let expressao = await this.ou();
+
+        // Se não há vírgula, retorna a expressão simples
+        if (!this.verificarSeSimboloAtualEIgualA(tiposDeSimbolos.VIRGULA)) {
+            return expressao;
+        }
+
+        // Se há vírgula, então é uma tupla
+        const elementos = [expressao];
+
+        do {
+            if (this.verificarTipoSimboloAtual(tiposDeSimbolos.PARENTESE_DIREITO)) {
+                break;
+            }
+            elementos.push(await this.ou());
+        } while (this.verificarSeSimboloAtualEIgualA(tiposDeSimbolos.VIRGULA));
+
+        return new TuplaN(this.hashArquivo, expressao.linha, elementos);
+    }
+
+    protected async expressao(): Promise<ConstrutoInterface> {
+        return await this.atribuir();
+    }
+
+    protected async funcao(tipo: string): Promise<FuncaoDeclaracao> {
+        // Avançar `função` ou `funcao`.
+        this.avancarEDevolverAnterior();
+
+        const nomeFuncao: SimboloInterface = this.consumir(
+            tiposDeSimbolos.IDENTIFICADOR,
+            `Esperado nome ${tipo}.`
+        );
+
+        const corpo = await this.corpoDaFuncao(tipo);
+        return new FuncaoDeclaracao(nomeFuncao, corpo);
+    }
+
+    protected async logicaComumParametros(): Promise<ParametroInterface[]> {
+        const parametros: ParametroInterface[] = [];
+
+        do {
+            if (parametros.length >= 255) {
+                throw this.erro(
+                    this.simbolos[this.atual],
+                    'Função não pode ter mais de 255 parâmetros.'
+                );
+            }
+
+            const parametro: Partial<ParametroInterface> = {};
+
+            if (this.simbolos[this.atual].tipo === tiposDeSimbolos.MULTIPLICACAO) {
+                this.avancarEDevolverAnterior();
+                parametro.abrangencia = 'multiplo';
+            } else {
+                parametro.abrangencia = 'padrao';
+            }
+
+            parametro.nome = this.consumir(
+                tiposDeSimbolos.IDENTIFICADOR,
+                'Esperado nome do parâmetro.'
+            );
+
+            if (this.verificarSeSimboloAtualEIgualA(tiposDeSimbolos.IGUAL)) {
+                parametro.valorPadrao = await this.primario();
+            }
+
+            parametros.push(parametro as ParametroInterface);
+
+            if (parametro.abrangencia === 'multiplo') break;
+        } while (this.verificarSeSimboloAtualEIgualA(tiposDeSimbolos.VIRGULA));
+        return parametros;
+    }
+
+    /**
+     * Os métodos a seguir só devem ser implementados se o dialeto
+     * em questão realmente possui a funcionalidade, e devem levantar
+     * erro em caso contrário.
+     */
+
+    protected bitShift(): Promise<ConstrutoInterface> {
+        throw new Error('Método não implementado.');
+    }
+
+    protected bitE(): Promise<ConstrutoInterface> {
+        throw new Error('Método não implementado.');
+    }
+
+    protected bitOu(): Promise<ConstrutoInterface> {
+        throw new Error('Método não implementado.');
+    }
+
+    protected declaracaoContinua(): Continua {
+        throw new Error('Método não implementado.');
+    }
+
+    protected declaracaoDeClasse(): Promise<Classe> {
+        throw new Error('Método não implementado.');
+    }
+
+    protected declaracaoDeVariavel(): Var {
+        throw new Error('Método não implementado.');
+    }
+
+    protected declaracaoExpressao(simboloAnterior?: SimboloInterface): Promise<Expressao> {
+        throw new Error('Método não implementado.');
+    }
+
+    protected declaracaoRetorna(): Promise<Retorna> {
+        throw new Error('Método não implementado.');
+    }
+
+    protected declaracaoSustar(): Sustar {
+        throw new Error('Método não implementado.');
+    }
+
+    protected declaracaoTente(): Promise<Tente> {
+        throw new Error('Método não implementado.');
+    }
+
+    protected em(): Promise<ConstrutoInterface> {
+        throw new Error('Método não implementado.');
+    }
+
+    protected resolverDeclaracao() {
+        throw new Error('Método não implementado.');
+    }
+
+    /**
+     * Este é o ponto de entrada de toda a avaliação sintática. É o
+     * único método mencionado na interface do avaliador sintático, e cada
+     * avaliador sintático deve implementar o seu método.
+     * @param retornoLexador O retorno do Lexador.
+     * @param hashArquivo O hash do arquivo, gerado pela função `cyrb53`.
+     * @see cyrb53
+     */
+    abstract analisar(
+        retornoLexador: RetornoLexadorInterface<SimboloInterface>,
+        hashArquivo: number
+    ): Promise<RetornoAvaliadorSintaticoInterface<Declaracao>>;
+}
+
+

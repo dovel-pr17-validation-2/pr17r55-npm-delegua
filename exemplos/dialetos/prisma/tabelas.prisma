@@ -1,0 +1,4 @@
+local frutas = {"maçã", "banana", "laranja"};
+imprima(frutas[1]);
+imprima(frutas[2]);
+imprima(frutas[3]);

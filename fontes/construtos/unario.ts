@@ -1,0 +1,39 @@
+import { VisitanteComumInterface, SimboloInterface } from '../interfaces';
+import { ConstrutoInterface } from '../interfaces/construtos/construto-interface';
+
+export class Unario<TTipoSimbolo extends string = string> implements ConstrutoInterface {
+    linha: number;
+    hashArquivo: number;
+
+    operador: SimboloInterface<TTipoSimbolo>;
+    operando: ConstrutoInterface;
+    incidenciaOperador: 'ANTES' | 'DEPOIS';
+    tipo: string = 'qualquer';
+
+    constructor(
+        hashArquivo: number,
+        operador: SimboloInterface<TTipoSimbolo>,
+        operando: ConstrutoInterface,
+        incidenciaOperador: 'ANTES' | 'DEPOIS' = 'ANTES'
+    ) {
+        this.linha = operador.linha;
+        this.hashArquivo = hashArquivo;
+
+        this.operador = operador;
+        this.operando = operando;
+        this.incidenciaOperador = incidenciaOperador;
+        this.tipo = operando.tipo;
+    }
+
+    aceitar(visitante: VisitanteComumInterface): any {
+        return visitante.visitarExpressaoUnaria(this);
+    }
+
+    paraTexto(): string {
+        return `<unário operando=${this.operando.paraTexto()} operador=${this.operador.lexema} incidênciaOperador=${this.incidenciaOperador} />`;
+    }
+
+    paraTextoSaida(): string {
+        throw new Error('Método não implementado.');
+    }
+}

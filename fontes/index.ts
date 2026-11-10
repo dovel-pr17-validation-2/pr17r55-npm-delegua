@@ -1,0 +1,13 @@
+export * from './analisador-semantico';
+export * from './ffi';
+export * from './avaliador-sintatico';
+export * from './construtos';
+export * from './declaracoes';
+export { PontoParada } from './depuracao';
+export * from './estilizador';
+export * from './formatadores';
+export * from './geracao-identificadores';
+export * from './interfaces';
+export * from './interpretador';
+export * from './lexador';
+export * from './tradutores';

@@ -1,0 +1,1148 @@
+import { EspacoMemoria } from '../../espaco-memoria';
+
+import { Chamavel } from '../../estruturas/chamavel';
+import { DescritorTipoClasse } from '../../estruturas/descritor-tipo-classe';
+import { DeleguaFuncao } from '../../estruturas/delegua-funcao';
+import { FuncaoPadrao } from '../../estruturas/funcao-padrao';
+import { DeleguaModulo } from '../../estruturas/modulo';
+import { ObjetoDeleguaClasse } from '../../estruturas/objeto-delegua-classe';
+
+import {
+    AcessoIndiceVariavel,
+    AcessoIntervaloVariavel,
+    AcessoMetodo,
+    AcessoPropriedade,
+    ArgumentoReferenciaFuncao,
+    Atribuir,
+    ComentarioComoConstruto,
+    ExpressaoRegular,
+    FimPara,
+    FormatacaoEscrita,
+    Isto,
+    Leia,
+    Literal,
+    ReferenciaFuncao,
+    Separador,
+    Super,
+    TipoDe,
+    Tupla,
+    TuplaN,
+    Variavel,
+} from '../../../construtos';
+import {
+    CabecalhoPrograma,
+    Classe,
+    Comentario,
+    Const,
+    ConstMultiplo,
+    Declaracao,
+    Enquanto,
+    Escolha,
+    Escreva,
+    EscrevaMesmaLinha,
+    Expressao,
+    Fazer,
+    FuncaoDeclaracao,
+    Importar,
+    Para,
+    ParaCada,
+    Se,
+    TendoComo,
+    Tente,
+    TextoDocumentacao,
+    Var,
+    VarMultiplo,
+} from '../../../declaracoes';
+import { ErroEmTempoDeExecucao } from '../../../excecoes';
+import {
+    ConstrutoInterface,
+    InterpretadorInterface,
+    ResolvedorInterface,
+    SimboloInterface,
+    VariavelInterface,
+} from '../../../interfaces';
+import { ErroInterpretadorInterface } from '../../../interfaces/erros/erro-interpretador-interface';
+import { EscopoExecucaoInterface } from '../../../interfaces/escopo-execucao';
+import { RetornoInterpretadorInterface } from '../../../interfaces/retornos/retorno-interpretador-interface';
+import { ContinuarQuebra, Quebra, RetornoQuebra, SustarQuebra } from '../../../quebras';
+import { inferirTipoVariavel } from '../../../inferenciador';
+import { PilhaEscoposExecucao } from '../../pilha-escopos-execucao';
+
+import tiposDeSimbolos from '../../../tipos-de-simbolos/egua-classico';
+
+import carregarBibliotecaGlobal from '../../../bibliotecas/dialetos/egua-classico/biblioteca-global';
+import { ResolvedorEguaClassico } from './resolvedor/resolvedor';
+import { ArgumentoInterface } from '../../argumento-interface';
+import { InicioAlgoritmo } from '../../../declaracoes/inicio-algoritmo';
+
+/**
+ * O Interpretador visita todos os elementos complexos gerados pelo analisador sintático (_Parser_)
+ * e de fato executa a lógica de programação descrita no código.
+ */
+export class InterpretadorEguaClassico implements InterpretadorInterface {
+    resolvedor: ResolvedorInterface;
+
+    // Esta variável indica que propriedades de classes precisam ser
+    // declaradas para serem válidas.
+    // Égua não requer isso, mas precisamos ter o valor
+    // aqui por questões de compatibilidade com outros elementos.
+    requerDeclaracaoPropriedades: boolean = false;
+
+    diretorioBase: any;
+    funcaoDeRetorno: Function;
+    locais: Map<ConstrutoInterface, number>;
+    erros: ErroInterpretadorInterface[];
+    pilhaEscoposExecucao: PilhaEscoposExecucao;
+    interfaceEntradaSaida: any = null;
+    hashArquivoDeclaracaoAtual: number;
+    linhaDeclaracaoAtual: number;
+    classeAtualEmExecucao: any = null;
+    emDeclaracaoTente: boolean = false;
+
+    constructor(diretorioBase: string) {
+        this.resolvedor = new ResolvedorEguaClassico();
+        this.diretorioBase = diretorioBase;
+        this.funcaoDeRetorno = console.log;
+
+        this.locais = new Map();
+        this.erros = [];
+        this.pilhaEscoposExecucao = new PilhaEscoposExecucao();
+        const escopoExecucao: EscopoExecucaoInterface = {
+            declaracoes: [],
+            declaracaoAtual: 0,
+            espacoMemoria: new EspacoMemoria(),
+            finalizado: false,
+            tipo: 'outro',
+            emLacoRepeticao: false,
+        };
+        this.pilhaEscoposExecucao.empilhar(escopoExecucao);
+
+        carregarBibliotecaGlobal(this, this.pilhaEscoposExecucao);
+    }
+
+    /* istanbul ignore next */
+    visitarExpressaoTuplaN(expressao: TuplaN): Promise<any> | void {
+        throw new Error('Método não implementado.');
+    }
+
+    /* istanbul ignore next */
+    visitarExpressaoAcessoIntervaloVariavel(
+        expressao: AcessoIntervaloVariavel
+    ): Promise<any> | void {
+        throw new Error('Método não implementado.');
+    }
+
+    /* istanbul ignore next */
+    visitarDeclaracaoTextoDocumentacao(declaracao: TextoDocumentacao): Promise<any> | void {
+        throw new Error('Método não implementado.');
+    }
+
+    /* istanbul ignore next */
+    visitarExpressaoSeparador(expressao: Separador): Promise<any> | void {
+        throw new Error('Método não implementado.');
+    }
+
+    /* istanbul ignore next */
+    visitarExpressaoComentario(expressao: ComentarioComoConstruto): Promise<any> | void {
+        throw new Error('Método não implementado.');
+    }
+
+    resolverValor(objeto: any) {
+        if (objeto === null || objeto === undefined) {
+            return objeto;
+        }
+
+        if (objeto.hasOwnProperty('valor')) {
+            return objeto.valor;
+        }
+
+        return objeto;
+    }
+
+    /* istanbul ignore next */
+    visitarExpressaoArgumentoReferenciaFuncao(
+        expressao: ArgumentoReferenciaFuncao
+    ): Promise<any> | void {
+        throw new Error('Método não implementado.');
+    }
+
+    /* istanbul ignore next */
+    visitarExpressaoReferenciaFuncao(expressao: ReferenciaFuncao): Promise<any> | void {
+        throw new Error('Método não implementado.');
+    }
+
+    /* istanbul ignore next */
+    visitarExpressaoAcessoMetodo(expressao: AcessoMetodo): Promise<any> | void {
+        throw new Error('Método não implementado.');
+    }
+
+    /* istanbul ignore next */
+    visitarExpressaoAcessoPropriedade(expressao: AcessoPropriedade): Promise<any> | void {
+        throw new Error('Método não implementado.');
+    }
+
+    visitarDeclaracaoComentario(declaracao: Comentario): Promise<any> {
+        return Promise.resolve();
+    }
+
+    /* istanbul ignore next */
+    visitarDeclaracaoTendoComo(declaracao: TendoComo): Promise<any> {
+        throw new Error('Método não implementado.');
+    }
+
+    /* istanbul ignore next */
+    visitarDeclaracaoInicioAlgoritmo(declaracao: InicioAlgoritmo): Promise<any> {
+        throw new Error('Método não implementado.');
+    }
+
+    /* istanbul ignore next */
+    visitarDeclaracaoCabecalhoPrograma(declaracao: CabecalhoPrograma): Promise<any> {
+        throw new Error('Método não implementado.');
+    }
+
+    /* istanbul ignore next */
+    visitarExpressaoTupla(expressao: Tupla): Promise<any> {
+        throw new Error('Método não implementado.');
+    }
+
+    /* istanbul ignore next */
+    visitarExpressaoAcessoElementoMatriz(expressao: any): never {
+        throw new Error('Método não implementado.');
+    }
+
+    /* istanbul ignore next */
+    visitarExpressaoAtribuicaoPorIndicesMatriz(expressao: any): Promise<any> {
+        throw new Error('Método não implementado.');
+    }
+
+    /* istanbul ignore next */
+    visitarExpressaoExpressaoRegular(expressao: ExpressaoRegular): Promise<any> {
+        throw new Error('Método não implementado.');
+    }
+
+    /* istanbul ignore next */
+    visitarExpressaoTipoDe(expressao: TipoDe): Promise<any> {
+        throw new Error('Método não implementado.');
+    }
+
+    /* istanbul ignore next */
+    visitarExpressaoFalhar(expressao: any): Promise<any> {
+        throw new Error('Método não implementado.');
+    }
+
+    /* istanbul ignore next */
+    visitarDeclaracaoParaCada(declaracao: ParaCada): Promise<any> {
+        throw new Error('Método não implementado.');
+    }
+
+    /* istanbul ignore next */
+    visitarDeclaracaoConst(declaracao: Const): Promise<any> {
+        throw new Error('Método não implementado.');
+    }
+
+    /* istanbul ignore next */
+    visitarDeclaracaoConstMultiplo(declaracao: ConstMultiplo): Promise<any> {
+        throw new Error('Método não implementado.');
+    }
+
+    /* istanbul ignore next */
+    visitarExpressaoFimPara(declaracao: FimPara): never {
+        throw new Error('Método não implementado.');
+    }
+
+    /* istanbul ignore next */
+    visitarExpressaoFormatacaoEscrita(declaracao: FormatacaoEscrita): never {
+        throw new Error('Método não implementado.');
+    }
+
+    /* istanbul ignore next */
+    visitarDeclaracaoEscrevaMesmaLinha(declaracao: EscrevaMesmaLinha): never {
+        throw new Error('Método não implementado.');
+    }
+
+    /* istanbul ignore next */
+    visitarExpressaoLeia(expressao: Leia): Promise<any> {
+        throw new Error('Método não implementado.');
+    }
+
+    visitarExpressaoLiteral(expressao: Literal) {
+        return Promise.resolve(expressao.valor);
+    }
+
+    avaliar(expressao: ConstrutoInterface | Declaracao): VariavelInterface | any {
+        return expressao.aceitar(this);
+    }
+
+    visitarExpressaoAgrupamento(expressao: any) {
+        return this.avaliar(expressao.expressao);
+    }
+
+    eVerdadeiro(objeto: any): boolean {
+        if (objeto === null) return false;
+        if (typeof objeto === 'boolean') return Boolean(objeto);
+        if (objeto.hasOwnProperty('valor')) {
+            return Boolean(objeto.valor);
+        }
+
+        return true;
+    }
+
+    verificarOperandoNumero(operador: SimboloInterface, operando: any): void {
+        if (typeof operando === 'number' || operando.tipo === 'número') return;
+        throw new ErroEmTempoDeExecucao(
+            operador,
+            'Operador precisa ser um número.',
+            operador.linha
+        );
+    }
+
+    async visitarExpressaoUnaria(expr: any) {
+        const direita = await this.avaliar(expr.operando);
+        const valor: any = this.resolverValor(direita);
+
+        switch (expr.operador.tipo) {
+            case tiposDeSimbolos.SUBTRACAO:
+                this.verificarOperandoNumero(expr.operador, valor);
+                return -valor;
+            case tiposDeSimbolos.NEGACAO:
+                return !this.eVerdadeiro(valor);
+            case tiposDeSimbolos.BIT_NOT:
+                return ~valor;
+        }
+
+        return null;
+    }
+
+    eIgual(esquerda: VariavelInterface | any, direita: VariavelInterface | any): boolean {
+        if (esquerda && esquerda.tipo) {
+            if (esquerda.tipo === 'nulo' && direita.tipo && direita.tipo === 'nulo') return true;
+            if (esquerda.tipo === 'nulo') return false;
+
+            return esquerda.valor === direita.valor;
+        }
+        if (esquerda === null && direita === null) return true;
+        if (esquerda === null) return false;
+
+        return esquerda === direita;
+    }
+
+    verificarOperandosNumeros(
+        operador: SimboloInterface,
+        direita: VariavelInterface | any,
+        esquerda: VariavelInterface | any
+    ): void {
+        const tipoDireita: string = direita.tipo
+            ? direita.tipo
+            : typeof direita === 'number'
+              ? 'número'
+              : String(NaN);
+        const tipoEsquerda: string = esquerda.tipo
+            ? esquerda.tipo
+            : typeof esquerda === 'number'
+              ? 'número'
+              : String(NaN);
+        const tiposNumericos = ['inteiro', 'numero', 'número', 'real'];
+        if (
+            tiposNumericos.includes(tipoDireita.toLowerCase()) &&
+            tiposNumericos.includes(tipoEsquerda.toLowerCase())
+        )
+            return;
+        throw new ErroEmTempoDeExecucao(
+            operador,
+            'Operadores precisam ser números.',
+            operador.linha
+        );
+    }
+
+    async visitarExpressaoBinaria(expressao: any): Promise<any> {
+        try {
+            const esquerda: VariavelInterface | any = await this.avaliar(expressao.esquerda);
+            const direita: VariavelInterface | any = await this.avaliar(expressao.direita);
+            const valorEsquerdo: any = this.resolverValor(esquerda);
+            const valorDireito: any = this.resolverValor(direita);
+            const tipoEsquerdo: string =
+                esquerda && esquerda.hasOwnProperty('tipo')
+                    ? esquerda.tipo
+                    : inferirTipoVariavel(esquerda);
+            const tipoDireito: string =
+                direita && direita.hasOwnProperty('tipo')
+                    ? direita.tipo
+                    : inferirTipoVariavel(direita);
+
+            switch (expressao.operador.tipo) {
+                case tiposDeSimbolos.EXPONENCIACAO:
+                    this.verificarOperandosNumeros(expressao.operador, esquerda, direita);
+                    return Math.pow(valorEsquerdo, valorDireito);
+
+                case tiposDeSimbolos.MAIOR:
+                    this.verificarOperandosNumeros(expressao.operador, esquerda, direita);
+                    return Number(valorEsquerdo) > Number(valorDireito);
+
+                case tiposDeSimbolos.MAIOR_IGUAL:
+                    this.verificarOperandosNumeros(expressao.operador, esquerda, direita);
+                    return Number(valorEsquerdo) >= Number(valorDireito);
+
+                case tiposDeSimbolos.MENOR:
+                    this.verificarOperandosNumeros(expressao.operador, esquerda, direita);
+                    return Number(valorEsquerdo) < Number(valorDireito);
+
+                case tiposDeSimbolos.MENOR_IGUAL:
+                    this.verificarOperandosNumeros(expressao.operador, esquerda, direita);
+                    return Number(valorEsquerdo) <= Number(valorDireito);
+
+                case tiposDeSimbolos.SUBTRACAO:
+                    this.verificarOperandosNumeros(expressao.operador, esquerda, direita);
+                    return Number(valorEsquerdo) - Number(valorDireito);
+
+                case tiposDeSimbolos.ADICAO:
+                    if (tipoEsquerdo === 'número' && tipoDireito === 'número') {
+                        return Number(valorEsquerdo) + Number(valorDireito);
+                    } else if (tipoEsquerdo === 'texto' && tipoDireito === 'texto') {
+                        return String(valorEsquerdo) + String(valorDireito);
+                    }
+
+                    throw new ErroEmTempoDeExecucao(
+                        expressao.operador,
+                        'Operadores precisam ser dois números ou duas strings.'
+                    );
+
+                case tiposDeSimbolos.DIVISAO:
+                    this.verificarOperandosNumeros(expressao.operador, esquerda, direita);
+                    return Number(valorEsquerdo) / Number(valorDireito);
+
+                case tiposDeSimbolos.MULTIPLICACAO:
+                    this.verificarOperandosNumeros(expressao.operador, esquerda, direita);
+                    return Number(valorEsquerdo) * Number(valorDireito);
+
+                case tiposDeSimbolos.MODULO:
+                    this.verificarOperandosNumeros(expressao.operador, esquerda, direita);
+                    return Number(valorEsquerdo) % Number(valorDireito);
+
+                case tiposDeSimbolos.BIT_AND:
+                    this.verificarOperandosNumeros(expressao.operador, esquerda, direita);
+                    return Number(valorEsquerdo) & Number(valorDireito);
+
+                case tiposDeSimbolos.BIT_XOR:
+                    this.verificarOperandosNumeros(expressao.operador, esquerda, direita);
+                    return Number(valorEsquerdo) ^ Number(valorDireito);
+
+                case tiposDeSimbolos.BIT_OR:
+                    this.verificarOperandosNumeros(expressao.operador, esquerda, direita);
+                    return Number(valorEsquerdo) | Number(valorDireito);
+
+                case tiposDeSimbolos.MENOR_MENOR:
+                    this.verificarOperandosNumeros(expressao.operador, esquerda, direita);
+                    return Number(valorEsquerdo) << Number(valorDireito);
+
+                case tiposDeSimbolos.MAIOR_MAIOR:
+                    this.verificarOperandosNumeros(expressao.operador, esquerda, direita);
+                    return Number(valorEsquerdo) >> Number(valorDireito);
+
+                case tiposDeSimbolos.DIFERENTE:
+                    return !this.eIgual(valorEsquerdo, valorDireito);
+
+                case tiposDeSimbolos.IGUAL_IGUAL:
+                    return this.eIgual(valorEsquerdo, valorDireito);
+            }
+
+            return null;
+        } catch (erro: any) {
+            return Promise.reject(erro);
+        }
+    }
+
+    async visitarExpressaoDeChamada(expressao: any) {
+        const variavelEntidadeChamada: VariavelInterface | any = await this.avaliar(
+            expressao.entidadeChamada
+        );
+
+        if (variavelEntidadeChamada === null) {
+            return Promise.reject(
+                new ErroEmTempoDeExecucao(
+                    expressao.parentese,
+                    'Chamada de função ou método inexistente: ' + String(expressao.entidadeChamada),
+                    expressao.linha
+                )
+            );
+        }
+
+        const entidadeChamada = this.resolverValor(variavelEntidadeChamada);
+
+        let argumentos: ArgumentoInterface[] = [];
+        for (let i = 0; i < expressao.argumentos.length; i++) {
+            const variavelArgumento = expressao.argumentos[i];
+
+            argumentos.push({
+                nome: variavelArgumento,
+                valor: await this.avaliar(variavelArgumento),
+            });
+        }
+
+        if (!(entidadeChamada instanceof Chamavel)) {
+            throw new ErroEmTempoDeExecucao(
+                expressao.parentese,
+                'Só pode chamar função ou classe.',
+                expressao.linha
+            );
+        }
+
+        let parametros;
+        if (entidadeChamada instanceof DeleguaFuncao) {
+            parametros = entidadeChamada.declaracao.parametros;
+        } else if (entidadeChamada instanceof DescritorTipoClasse) {
+            const metodoInit = entidadeChamada.metodos.inicializacao as DeleguaFuncao;
+            parametros = metodoInit ? metodoInit.declaracao.parametros : [];
+        } else {
+            parametros = [];
+        }
+
+        // Isso aqui completa os parâmetros não preenchidos com nulos.
+        if (argumentos.length < entidadeChamada.aridade()) {
+            const diferenca = entidadeChamada.aridade() - argumentos.length;
+            for (let i = 0; i < diferenca; i++) {
+                argumentos.push(null);
+            }
+        } else {
+            if (
+                parametros &&
+                parametros.length > 0 &&
+                parametros[parametros.length - 1]['tipo'] === 'multiplo'
+            ) {
+                let novosArgumentos = argumentos.slice(0, parametros.length - 1);
+                novosArgumentos = novosArgumentos.concat(
+                    argumentos.slice(parametros.length - 1, argumentos.length)
+                );
+                argumentos = novosArgumentos;
+            }
+        }
+
+        if (entidadeChamada instanceof FuncaoPadrao) {
+            return entidadeChamada.chamar(
+                undefined,
+                argumentos.map((a) => this.resolverValor(a)),
+                expressao.entidadeChamada.simbolo
+            );
+        }
+
+        return entidadeChamada.chamar(this, argumentos);
+    }
+
+    async visitarExpressaoDeAtribuicao(expressao: Atribuir) {
+        const valor = await this.avaliar(expressao.valor);
+        const alvoVariavel = expressao.alvo as Variavel;
+        this.pilhaEscoposExecucao.atribuirVariavel(alvoVariavel.simbolo, valor);
+
+        return valor;
+    }
+
+    procurarVariavel(simbolo: SimboloInterface, expressao: any): VariavelInterface {
+        return this.pilhaEscoposExecucao.obterValorVariavel(simbolo);
+    }
+
+    visitarExpressaoDeVariavel(expressao: Variavel): Promise<VariavelInterface> {
+        return Promise.resolve(this.procurarVariavel(expressao.simbolo, expressao));
+    }
+
+    async visitarDeclaracaoDeExpressao(declaracao: Expressao): Promise<any> {
+        return await this.avaliar(declaracao.expressao);
+    }
+
+    async visitarExpressaoLogica(expressao: any) {
+        const esquerda = await this.avaliar(expressao.esquerda);
+
+        if (expressao.operador.tipo === tiposDeSimbolos.EM) {
+            const direita = await this.avaliar(expressao.direita);
+
+            if (Array.isArray(direita) || typeof direita === 'string') {
+                return direita.includes(esquerda);
+            } else if (direita.constructor === Object) {
+                return esquerda in direita;
+            } else {
+                throw new ErroEmTempoDeExecucao(
+                    esquerda,
+                    "Tipo de chamada inválida com 'em'.",
+                    expressao.linha
+                );
+            }
+        }
+
+        // se um estado for verdadeiro, retorna verdadeiro
+        if (expressao.operador.tipo === tiposDeSimbolos.OU) {
+            if (this.eVerdadeiro(esquerda)) return esquerda;
+        }
+
+        // se um estado for falso, retorna falso
+        if (expressao.operador.tipo === tiposDeSimbolos.E) {
+            if (!this.eVerdadeiro(esquerda)) return esquerda;
+        }
+
+        return await this.avaliar(expressao.direita);
+    }
+
+    async visitarDeclaracaoSe(declaracao: Se): Promise<any> {
+        if (this.eVerdadeiro(await this.avaliar(declaracao.condicao))) {
+            return await this.executar(declaracao.caminhoEntao);
+        }
+
+        for (let i = 0; i < declaracao.caminhosSeSenao.length; i++) {
+            const atual = declaracao.caminhosSeSenao[i];
+
+            if (this.eVerdadeiro(await this.avaliar(atual.condicao))) {
+                return await this.executar(atual.caminho);
+            }
+        }
+
+        if (declaracao.caminhoSenao !== null) {
+            return await this.executar(declaracao.caminhoSenao);
+        }
+
+        return null;
+    }
+
+    async visitarDeclaracaoPara(declaracao: Para) {
+        if (declaracao.inicializador !== null) {
+            await this.avaliar(declaracao.inicializador as any);
+        }
+        while (true) {
+            if (declaracao.condicao !== null) {
+                if (!this.eVerdadeiro(await this.avaliar(declaracao.condicao))) {
+                    break;
+                }
+            }
+
+            try {
+                await this.executar(declaracao.corpo);
+            } catch (erro: any) {
+                throw erro;
+            }
+
+            if (declaracao.incrementar !== null) {
+                await this.avaliar(declaracao.incrementar);
+            }
+        }
+        return null;
+    }
+
+    async visitarDeclaracaoFazer(declaracao: Fazer): Promise<any> {
+        do {
+            try {
+                await this.executar(declaracao.caminhoFazer);
+            } catch (erro) {
+                throw erro;
+            }
+        } while (this.eVerdadeiro(await this.avaliar(declaracao.condicaoEnquanto)));
+    }
+
+    async visitarDeclaracaoEscolha(declaracao: Escolha) {
+        const condicaoEscolha = await this.avaliar(declaracao.identificadorOuLiteral);
+        const caminhos = declaracao.caminhos;
+        const caminhoPadrao = declaracao.caminhoPadrao;
+
+        let encontrado = false;
+        try {
+            for (let i = 0; i < caminhos.length; i++) {
+                const caminho = caminhos[i];
+
+                for (let j = 0; j < caminho.condicoes.length; j++) {
+                    if ((await this.avaliar(caminho.condicoes[j])) === condicaoEscolha) {
+                        encontrado = true;
+
+                        try {
+                            for (let k = 0; k < caminho.declaracoes.length; k++) {
+                                await this.executar(caminho.declaracoes[k]);
+                            }
+                        } catch (erro: any) {
+                            throw erro;
+                        }
+                    }
+                }
+            }
+
+            if (caminhoPadrao !== null && encontrado === false) {
+                for (let i = 0; i < caminhoPadrao.declaracoes.length; i++) {
+                    await this.executar(caminhoPadrao['declaracoes'][i]);
+                }
+            }
+        } catch (erro: any) {
+            throw erro;
+        }
+    }
+
+    async visitarDeclaracaoTente(declaracao: Tente): Promise<any> {
+        let valorRetorno: any;
+        try {
+            let sucesso = true;
+            this.emDeclaracaoTente = true;
+
+            try {
+                valorRetorno = await this.executarBloco(declaracao.caminhoTente);
+            } catch (erro: any) {
+                sucesso = false;
+
+                if (declaracao.caminhoPegue.length > 0) {
+                    valorRetorno = await this.executarBloco(declaracao.caminhoPegue[0].corpo);
+                } else {
+                    this.erros.push(erro);
+                }
+            }
+
+            if (sucesso && declaracao.caminhoSenao !== null) {
+                valorRetorno = await this.executarBloco(declaracao.caminhoSenao);
+            }
+        } finally {
+            if (declaracao.caminhoFinalmente !== null)
+                valorRetorno = await this.executarBloco(declaracao.caminhoFinalmente);
+
+            this.emDeclaracaoTente = false;
+        }
+
+        return valorRetorno;
+    }
+
+    async visitarDeclaracaoEnquanto(declaracao: Enquanto) {
+        while (this.eVerdadeiro(await this.avaliar(declaracao.condicao))) {
+            try {
+                await this.executar(declaracao.corpo);
+            } catch (erro) {
+                throw erro;
+            }
+        }
+
+        return null;
+    }
+
+    // TODO: Implementar em `delegua-node`.
+    async visitarDeclaracaoImportar(declaracao: Importar) {
+        throw new ErroEmTempoDeExecucao(
+            {
+                lexema: declaracao.caminho.valor,
+                linha: declaracao.linha,
+                hashArquivo: declaracao.caminho.hashArquivo,
+            } as SimboloInterface,
+            'Importação não suportada em núcleo da linguagem puro. Favor executar a aplicação usando o pacote NPM `delegua-node`.',
+            declaracao.linha
+        );
+    }
+
+    async visitarDeclaracaoEscreva(declaracao: Escreva) {
+        try {
+            const resultadoAvaliacao = await this.avaliar(declaracao.argumentos[0]);
+            let valor = this.resolverValor(resultadoAvaliacao);
+            this.funcaoDeRetorno(this.paraTexto(valor));
+            return null;
+        } catch (erro: any) {
+            this.erros.push({
+                erroInterno: erro,
+                linha: declaracao.linha,
+                hashArquivo: declaracao.hashArquivo,
+            });
+        }
+    }
+
+    /**
+     * Empilha declarações na pilha de escopos de execução, cria um novo ambiente e
+     * executa as declarações empilhadas.
+     *
+     * Se o retorno do último bloco foi uma exceção (normalmente um erro em tempo de execução),
+     * atira a exceção daqui.
+     * Isso é usado, por exemplo, em blocos `tente ... pegue ... finalmente`.
+     * @param declaracoes Um vetor de declaracoes a ser executado.
+     * @param ambiente O ambiente de execução quando houver, como parâmetros, argumentos, etc.
+     */
+    async executarBloco(declaracoes: Declaracao[], ambiente?: EspacoMemoria): Promise<any> {
+        const escopoExecucao: EscopoExecucaoInterface = {
+            declaracoes: declaracoes,
+            declaracaoAtual: 0,
+            espacoMemoria: ambiente || new EspacoMemoria(),
+            finalizado: false,
+            tipo: 'outro',
+            emLacoRepeticao: false,
+        };
+        this.pilhaEscoposExecucao.empilhar(escopoExecucao);
+        const retornoUltimoEscopo: any = await this.executarUltimoEscopo();
+        if (retornoUltimoEscopo instanceof ErroEmTempoDeExecucao) {
+            throw retornoUltimoEscopo;
+        }
+        return retornoUltimoEscopo;
+    }
+
+    async visitarExpressaoBloco(declaracao: any): Promise<any> {
+        return await this.executarBloco(declaracao.declaracoes);
+    }
+
+    /**
+     * Executa expressão de definição de variável.
+     * @param declaracao A declaração Var
+     * @returns Sempre retorna nulo.
+     */
+    async visitarDeclaracaoVar(declaracao: Var) {
+        let valorOuOutraVariavel = null;
+        if (declaracao.inicializador !== null) {
+            valorOuOutraVariavel = await this.avaliar(declaracao.inicializador);
+        }
+
+        this.pilhaEscoposExecucao.definirVariavel(
+            declaracao.simbolo.lexema,
+            this.resolverValor(valorOuOutraVariavel)
+        );
+
+        return null;
+    }
+
+    async visitarDeclaracaoVarMultiplo(declaracao: VarMultiplo) {
+        throw new Error('Método não implementado.');
+    }
+
+    visitarExpressaoContinua(declaracao?: any): ContinuarQuebra {
+        return new ContinuarQuebra();
+    }
+
+    visitarExpressaoSustar(declaracao?: any): SustarQuebra {
+        return new SustarQuebra();
+    }
+
+    async visitarExpressaoRetornar(declaracao: any): Promise<RetornoQuebra> {
+        let valor = null;
+        if (declaracao.valor != null) valor = await this.avaliar(declaracao.valor);
+
+        return new RetornoQuebra(valor);
+    }
+
+    async visitarExpressaoFuncaoConstruto(expressao: any): Promise<DeleguaFuncao> {
+        return new DeleguaFuncao(null, expressao).capturarEscopo(this.pilhaEscoposExecucao);
+    }
+
+    async visitarExpressaoAtribuicaoPorIndice(expressao: any) {
+        const objeto = this.resolverValor(await this.avaliar(expressao.objeto));
+        let indice = await this.avaliar(expressao.indice);
+        const valor = await this.avaliar(expressao.valor);
+
+        if (Array.isArray(objeto)) {
+            if (indice < 0 && objeto.length !== 0) {
+                while (indice < 0) {
+                    indice += objeto.length;
+                }
+            }
+
+            while (objeto.length < indice) {
+                objeto.push(null);
+            }
+
+            objeto[indice] = valor;
+        } else if (
+            objeto.constructor === Object ||
+            objeto instanceof ObjetoDeleguaClasse ||
+            objeto instanceof DeleguaFuncao ||
+            objeto instanceof DescritorTipoClasse ||
+            objeto instanceof DeleguaModulo
+        ) {
+            objeto[indice] = valor;
+        } else {
+            throw new ErroEmTempoDeExecucao(
+                expressao.simboloFechamento,
+                'Somente listas, dicionários, classes e objetos podem ser mudados por sobrescrita.',
+                expressao.linha
+            );
+        }
+    }
+
+    async visitarExpressaoAcessoIndiceVariavel(expressao: AcessoIndiceVariavel | any) {
+        const variavelObjeto: VariavelInterface = await this.avaliar(expressao.entidadeChamada);
+        const objeto = this.resolverValor(variavelObjeto);
+
+        let indice = await this.avaliar(expressao.indice);
+        const valorIndice = this.resolverValor(indice);
+        if (Array.isArray(objeto)) {
+            if (!Number.isInteger(valorIndice)) {
+                throw new ErroEmTempoDeExecucao(
+                    expressao.simboloFechamento,
+                    'Somente inteiros podem ser usados para indexar um vetor.',
+                    expressao.linha
+                );
+            }
+
+            if (indice < 0 && objeto.length !== 0) {
+                while (indice < 0) {
+                    indice += objeto.length;
+                }
+            }
+
+            if (indice >= objeto.length) {
+                throw new ErroEmTempoDeExecucao(
+                    expressao.simboloFechamento,
+                    'Índice do vetor fora do intervalo.',
+                    expressao.linha
+                );
+            }
+            return objeto[indice];
+        } else if (
+            objeto.constructor === Object ||
+            objeto instanceof ObjetoDeleguaClasse ||
+            objeto instanceof DeleguaFuncao ||
+            objeto instanceof DescritorTipoClasse ||
+            objeto instanceof DeleguaModulo
+        ) {
+            return objeto[indice] || null;
+        } else if (typeof objeto === 'string') {
+            if (!Number.isInteger(indice)) {
+                throw new ErroEmTempoDeExecucao(
+                    expressao.simboloFechamento,
+                    'Somente inteiros podem ser usados para indexar um vetor.',
+                    expressao.linha
+                );
+            }
+
+            if (indice < 0 && objeto.length !== 0) {
+                while (indice < 0) {
+                    indice += objeto.length;
+                }
+            }
+
+            if (indice >= objeto.length) {
+                throw new ErroEmTempoDeExecucao(
+                    expressao.simboloFechamento,
+                    'Índice fora do tamanho.',
+                    expressao.linha
+                );
+            }
+            return objeto.charAt(indice);
+        } else {
+            throw new ErroEmTempoDeExecucao(
+                expressao.simboloFechamento,
+                'Somente listas, dicionários, classes e objetos podem ser mudados por sobrescrita.',
+                expressao.linha
+            );
+        }
+    }
+
+    async visitarExpressaoDefinirValor(expressao: any) {
+        const objeto = this.resolverValor(await this.avaliar(expressao.objeto));
+
+        if (!(objeto instanceof ObjetoDeleguaClasse) && objeto.constructor !== Object) {
+            throw new ErroEmTempoDeExecucao(
+                expressao.nome,
+                'Somente instâncias e dicionários podem possuir campos.',
+                expressao.linha
+            );
+        }
+
+        const valor = await this.avaliar(expressao.valor);
+        if (objeto instanceof ObjetoDeleguaClasse) {
+            await objeto.definir(expressao.nome, valor, this);
+            return valor;
+        } else if (objeto.constructor === Object) {
+            objeto[expressao.nome.lexema] = valor;
+        }
+    }
+
+    visitarDeclaracaoDefinicaoFuncao(declaracao: FuncaoDeclaracao): void {
+        const funcao = new DeleguaFuncao(declaracao.simbolo.lexema, declaracao.funcao).capturarEscopo(
+            this.pilhaEscoposExecucao
+        );
+        this.pilhaEscoposExecucao.definirVariavel(declaracao.simbolo.lexema, funcao);
+    }
+
+    async visitarDeclaracaoClasse(declaracao: Classe) {
+        let superClasse = null;
+        if (declaracao.superClasse !== null) {
+            const variavelSuperClasse: VariavelInterface = await this.avaliar(
+                declaracao.superClasse
+            );
+            superClasse = variavelSuperClasse.valor;
+            if (!(superClasse instanceof DescritorTipoClasse)) {
+                throw new ErroEmTempoDeExecucao(
+                    declaracao.superClasse.simbolo,
+                    'Superclasse precisa ser uma classe.',
+                    declaracao.linha
+                );
+            }
+        }
+
+        // TODO: Estudar retirar isso.
+        // this.pilhaEscoposExecucao.definirVariavel(declaracao.simbolo.lexema, null);
+
+        if (declaracao.superClasse !== null) {
+            this.pilhaEscoposExecucao.definirVariavel('super', superClasse);
+        }
+
+        const metodos: { [nome: string]: DeleguaFuncao } = {};
+        const definirMetodos = declaracao.metodos;
+        for (let i = 0; i < declaracao.metodos.length; i++) {
+            const metodoAtual = definirMetodos[i];
+            const eInicializador = metodoAtual.simbolo.lexema === 'construtor';
+            const funcao = new DeleguaFuncao(
+                metodoAtual.simbolo.lexema,
+                metodoAtual.funcao,
+                undefined,
+                eInicializador
+            ).capturarEscopo(this.pilhaEscoposExecucao);
+            metodos[metodoAtual.simbolo.lexema] = funcao;
+        }
+
+        const deleguaClasse = new DescritorTipoClasse(declaracao.simbolo, superClasse, metodos);
+        deleguaClasse.orem = DescritorTipoClasse.computarOReM(deleguaClasse);
+
+        this.pilhaEscoposExecucao.definirVariavel(declaracao.simbolo.lexema, deleguaClasse);
+        return null;
+    }
+
+    async visitarExpressaoAcessoMetodoOuPropriedade(expressao: any) {
+        const variavelObjeto: VariavelInterface = await this.avaliar(expressao.objeto);
+        const objeto = variavelObjeto?.valor;
+        if (objeto instanceof ObjetoDeleguaClasse) {
+            return (await objeto.obter(expressao.simbolo, this)) || null;
+        }
+
+        if (objeto.constructor === Object) {
+            return objeto[expressao.simbolo.lexema] || null;
+        }
+
+        if (objeto instanceof DeleguaModulo) {
+            return objeto[expressao.simbolo.lexema] || null;
+        }
+
+        throw new ErroEmTempoDeExecucao(
+            expressao.simbolo,
+            'Você só pode acessar métodos do objeto e dicionários.',
+            expressao.linha
+        );
+    }
+
+    async visitarExpressaoIsto(expressao: Isto): Promise<any> {
+        return Promise.resolve(this.procurarVariavel(expressao.simboloChave, expressao));
+    }
+
+    async visitarExpressaoDicionario(expressao: any) {
+        const dicionario = {};
+        for (let i = 0; i < expressao.chaves.length; i++) {
+            dicionario[await this.avaliar(expressao.chaves[i])] = await this.avaliar(
+                expressao.valores[i]
+            );
+        }
+        return dicionario;
+    }
+
+    async visitarExpressaoVetor(expressao: any) {
+        const valores = [];
+        for (let i = 0; i < expressao.valores.length; i++) {
+            valores.push(await this.avaliar(expressao.valores[i]));
+        }
+        return valores;
+    }
+
+    visitarExpressaoSuper(expressao: Super) {
+        const objeto: VariavelInterface = this.pilhaEscoposExecucao.obterVariavelPorNome('isto');
+        return objeto.valor;
+    }
+
+    paraTexto(objeto: any): any {
+        if (objeto === null) return 'nulo';
+        if (typeof objeto === 'boolean') {
+            return objeto ? 'verdadeiro' : 'falso';
+        }
+
+        if (objeto instanceof Date) {
+            const formato = Intl.DateTimeFormat('pt', {
+                dateStyle: 'full',
+                timeStyle: 'full',
+            } as any);
+            return formato.format(objeto);
+        }
+
+        if (Array.isArray(objeto)) return objeto;
+
+        if (typeof objeto === 'object') return JSON.stringify(objeto);
+        if (objeto === undefined) {
+            return 'nulo';
+        }
+
+        return objeto.toString();
+    }
+
+    async executar(declaracao: Declaracao, mostrarResultado = false): Promise<any> {
+        return await declaracao.aceitar(this);
+    }
+
+    /**
+     * Executa o último escopo empilhado no topo na pilha de escopos do Interpretador.
+     * Originalmente, Égua não trabalha com uma pilha de escopos.
+     *
+     * O tratamento das exceções é feito de acordo com o bloco chamador.
+     * Por exemplo, em `tente ... pegue ... finalmente`, a exceção é capturada e tratada.
+     * Em outros blocos, pode ser desejável ter o erro em tela.
+     *
+     * Essa implementação é derivada do Interpretador de Delégua, mas simulando todos os
+     * comportamos do interpretador Égua original.
+     * Interpretador Égua: https://github.com/eguatech/egua/blob/master/src/interpreter.js
+     * @returns O resultado da execução do escopo, se houver.
+     */
+    async executarUltimoEscopo(): Promise<any> {
+        const ultimoEscopo = this.pilhaEscoposExecucao.topoDaPilha();
+        try {
+            let retornoExecucao: any;
+            for (
+                ;
+                !(retornoExecucao instanceof Quebra) &&
+                ultimoEscopo.declaracaoAtual < ultimoEscopo.declaracoes.length;
+                ultimoEscopo.declaracaoAtual++
+            ) {
+                retornoExecucao = await this.executar(
+                    ultimoEscopo.declaracoes[ultimoEscopo.declaracaoAtual]
+                );
+            }
+
+            return retornoExecucao;
+        } catch (erro: any) {
+            const declaracaoAtual = ultimoEscopo.declaracoes[ultimoEscopo.declaracaoAtual];
+            if (!this.emDeclaracaoTente) {
+                this.erros.push({
+                    erroInterno: erro,
+                    linha: declaracaoAtual.linha,
+                    hashArquivo: declaracaoAtual.hashArquivo,
+                });
+            } else {
+                return Promise.reject(erro);
+            }
+        } finally {
+            this.pilhaEscoposExecucao.removerUltimo();
+        }
+    }
+
+    async executarChamavel(chamavel: Chamavel, argumentos: any[]): Promise<any> {
+        if (chamavel instanceof FuncaoPadrao) {
+            return chamavel.chamar(this, argumentos, null);
+        }
+
+        const argumentosFormatados: ArgumentoInterface[] = argumentos.map((valor) => ({
+            nome: null,
+            valor,
+        }));
+        return chamavel.chamar(this, argumentosFormatados, null);
+    }
+
+    async interpretar(declaracoes: Declaracao[]): Promise<RetornoInterpretadorInterface> {
+        this.erros = [];
+
+        const retornoResolvedor = await this.resolvedor.resolver(declaracoes);
+        this.locais = retornoResolvedor.locais;
+
+        const escopoExecucao: EscopoExecucaoInterface = {
+            declaracoes: declaracoes,
+            declaracaoAtual: 0,
+            espacoMemoria: new EspacoMemoria(),
+            finalizado: false,
+            tipo: 'outro',
+            emLacoRepeticao: false,
+        };
+        this.pilhaEscoposExecucao.empilhar(escopoExecucao);
+        await this.executarUltimoEscopo();
+
+        return {
+            erros: this.erros,
+        } as RetornoInterpretadorInterface;
+    }
+
+    finalizacao(): void {
+        this.funcaoDeRetorno();
+    }
+}

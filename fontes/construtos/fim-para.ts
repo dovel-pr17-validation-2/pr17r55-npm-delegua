@@ -1,0 +1,45 @@
+import { Declaracao } from '../declaracoes';
+import { VisitanteComumInterface } from '../interfaces';
+import { Binario } from './binario';
+import { ConstrutoInterface } from '../interfaces/construtos/construto-interface';
+
+/**
+ * Construto especial para algumas linguagens como VisuAlg, que combina a
+ * avaliação da condição de continuação com o incremento.
+ *
+ * No caso específico do VisuAlg, ao final da última execução do bloco `para`,
+ * o incremento não deve acontecer.
+ *
+ * Considerando como o depurador executa, o efeito visualnusando apenas as
+ * declarações já existentes causava umansérie de comportamentos estranhos.
+ */
+export class FimPara implements ConstrutoInterface {
+    linha: number;
+    hashArquivo: number;
+    condicaoPara: Binario;
+    incremento?: Declaracao;
+
+    constructor(
+        hashArquivo: number,
+        linha: number,
+        condicaoPara: Binario,
+        blocoIncremento?: Declaracao
+    ) {
+        this.hashArquivo = hashArquivo;
+        this.linha = linha;
+        this.condicaoPara = condicaoPara;
+        this.incremento = blocoIncremento;
+    }
+
+    async aceitar(visitante: VisitanteComumInterface): Promise<any> {
+        return await visitante.visitarExpressaoFimPara(this);
+    }
+
+    paraTexto(): string {
+        return `<fim-para condiçãoPara=${this.condicaoPara.paraTexto()} incremento=${this.incremento.paraTexto()} />`;
+    }
+
+    paraTextoSaida(): string {
+        throw new Error('Método não implementado.');
+    }
+}

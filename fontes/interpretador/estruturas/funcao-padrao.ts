@@ -1,0 +1,52 @@
+import { InterpretadorInterface, SimboloInterface } from '../../interfaces';
+import { Chamavel } from './chamavel';
+
+/**
+ * Uma `FuncaoPadrao` normalmente é uma função em JavaScript que representa um
+ * método de uma biblioteca global, mas que pode ser usada para outros casos.
+ */
+export class FuncaoPadrao extends Chamavel {
+    valorAridade: number;
+    funcao: Function;
+    simbolo: SimboloInterface | undefined;
+    /** Nome com que a função foi registrada (ex.: `real`, `inteiro`). */
+    nome?: string;
+    argumentos?: { nome: string; tipo: string }[];
+    tipoRetorno?: string;
+    documentacao?: string;
+    descartarPrimeiroArgumento: boolean = true;
+
+    constructor(valorAridade: number, funcao: Function) {
+        super();
+        this.valorAridade = valorAridade;
+        this.funcao = funcao;
+    }
+
+    async chamar(
+        visitante: InterpretadorInterface,
+        argumentos: any[],
+        simbolo: SimboloInterface | null
+    ): Promise<any> {
+        if (simbolo) {
+            this.simbolo = simbolo;
+        }
+
+        return await this.funcao.apply(this, [visitante, ...argumentos]);
+    }
+
+    /**
+     * Método utilizado por Delégua para inspecionar esta função em depuração.
+     * @returns {string} A representação da função como texto.
+     */
+    paraTexto(): string {
+        return `<função-padrão nome=${this.nome || this.simbolo?.lexema || '(função anônima)'} />`;
+    }
+
+    /**
+     * Método utilizado pelo VSCode para representar esta função quando impressa.
+     * @returns {string} A representação da classe como texto.
+     */
+    toString(): string {
+        return this.paraTexto();
+    }
+}

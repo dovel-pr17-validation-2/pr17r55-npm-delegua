@@ -1,0 +1,365 @@
+import {
+    AcessoIndiceVariavel,
+    AcessoMetodoOuPropriedade,
+    Agrupamento,
+    Binario,
+    Chamada,
+    Literal,
+    Logico,
+    Unario,
+    Variavel,
+    Vetor,
+} from '../../construtos';
+import { Declaracao, Expressao } from '../../declaracoes';
+import { ConstrutoInterface, SimboloInterface } from '../../interfaces';
+import { RetornoAvaliadorSintaticoInterface, RetornoLexadorInterface } from '../../interfaces/retornos';
+import { MicroAvaliadorSintaticoBase } from '../micro-avaliador-sintatico-base';
+
+import { inferirTipoVariavel, TipoInferencia } from '../../inferenciador';
+
+import tiposDeSimbolos from '../../tipos-de-simbolos/pitugues';
+
+/**
+ * O MicroAvaliadorSintatico funciona apenas dentro de interpolações de texto.
+ */
+export class MicroAvaliadorSintaticoPitugues extends MicroAvaliadorSintaticoBase {
+    primario(): ConstrutoInterface {
+        const simboloAtual = this.simbolos[this.atual];
+
+        switch (simboloAtual.tipo) {
+            // TODO: Verificar se vamos usar isso.
+            /* case tiposDeSimbolos.CHAVE_ESQUERDA:
+                this.avancarEDevolverAnterior();
+                const chaves = [];
+                valores = [];
+
+                if (this.verificarSeSimboloAtualEIgualA(tiposDeSimbolos.CHAVE_DIREITA)) {
+                    return new Dicionario(-1, Number(this.linha), [], []);
+                }
+
+                while (!this.verificarSeSimboloAtualEIgualA(tiposDeSimbolos.CHAVE_DIREITA)) {
+                    const chave = this.atribuir();
+                    this.consumir(tiposDeSimbolos.DOIS_PONTOS, "Esperado ':' entre chave e valor.");
+                    const valor = this.atribuir();
+
+                    chaves.push(chave);
+                    valores.push(valor);
+
+                    if (this.simbolos[this.atual].tipo !== tiposDeSimbolos.CHAVE_DIREITA) {
+                        this.consumir(tiposDeSimbolos.VIRGULA, 'Esperado vírgula antes da próxima expressão.');
+                    }
+                }
+
+                return new Dicionario(-1, Number(this.linha), chaves, valores); */
+
+            // TODO: Verificar se vamos usar isso.
+            case tiposDeSimbolos.COLCHETE_ESQUERDO:
+                this.avancarEDevolverAnterior();
+                const valores = [];
+
+                if (this.verificarSeSimboloAtualEIgualA(tiposDeSimbolos.COLCHETE_DIREITO)) {
+                    return new Vetor(-1, Number(this.linha), []);
+                }
+
+                while (!this.verificarSeSimboloAtualEIgualA(tiposDeSimbolos.COLCHETE_DIREITO)) {
+                    const valor = this.declaracao();
+                    valores.push(valor);
+                    if (this.simbolos[this.atual].tipo !== tiposDeSimbolos.COLCHETE_DIREITO) {
+                        this.consumir(
+                            tiposDeSimbolos.VIRGULA,
+                            'Esperado vírgula antes da próxima expressão.'
+                        );
+                    }
+                }
+
+                const tipoVetor = inferirTipoVariavel(valores);
+                return new Vetor(-1, Number(this.linha), valores, tipoVetor);
+
+            case tiposDeSimbolos.FALSO:
+                this.avancarEDevolverAnterior();
+                return new Literal(-1, Number(this.linha), false);
+
+            case tiposDeSimbolos.NULO:
+                this.avancarEDevolverAnterior();
+                return new Literal(-1, Number(this.linha), null);
+
+            case tiposDeSimbolos.NUMERO:
+                const simboloNumero: SimboloInterface = this.avancarEDevolverAnterior();
+                const tipoNumeroInferido = Number.isInteger(simboloNumero.literal) ? 'inteiro' : 'real';
+                return new Literal(
+                    -1,
+                    Number(this.linha),
+                    simboloNumero.literal,
+                    tipoNumeroInferido as TipoInferencia
+                );
+            case tiposDeSimbolos.TEXTO:
+                const simboloTexto: SimboloInterface = this.avancarEDevolverAnterior();
+                return new Literal(
+                    -1,
+                    Number(this.linha),
+                    simboloTexto.literal,
+                    'texto' as TipoInferencia
+                );
+
+            case tiposDeSimbolos.IDENTIFICADOR:
+                const simboloIdentificador: SimboloInterface = this.avancarEDevolverAnterior();
+                return new Variavel(-1, simboloIdentificador);
+
+            case tiposDeSimbolos.PARENTESE_ESQUERDO:
+                this.avancarEDevolverAnterior();
+                const expressao = this.ou();
+                this.consumir(tiposDeSimbolos.PARENTESE_DIREITO, "Esperado ')' após a expressão.");
+
+                return new Agrupamento(-1, Number(this.linha), expressao);
+
+            case tiposDeSimbolos.VERDADEIRO:
+                this.avancarEDevolverAnterior();
+                return new Literal(-1, Number(this.linha), true);
+        }
+
+        throw this.erro(this.simbolos[this.atual], 'Esperado expressão.');
+    }
+
+    finalizarChamada(entidadeChamada: ConstrutoInterface): ConstrutoInterface {
+        const argumentos: Array<ConstrutoInterface> = [];
+
+        if (!this.verificarTipoSimboloAtual(tiposDeSimbolos.PARENTESE_DIREITO)) {
+            do {
+                if (argumentos.length >= 255) {
+                    throw this.erro(
+                        this.simbolos[this.atual],
+                        'Não pode haver mais de 255 argumentos.'
+                    );
+                }
+                argumentos.push(this.ou());
+            } while (this.verificarSeSimboloAtualEIgualA(tiposDeSimbolos.VIRGULA));
+        }
+
+        this.consumir(tiposDeSimbolos.PARENTESE_DIREITO, "Esperado ')' após os argumentos.");
+
+        return new Chamada(-1, entidadeChamada, argumentos);
+    }
+
+    chamar(): ConstrutoInterface {
+        let expressao = this.primario();
+
+        while (true) {
+            if (this.verificarSeSimboloAtualEIgualA(tiposDeSimbolos.PARENTESE_ESQUERDO)) {
+                expressao = this.finalizarChamada(expressao);
+            } else if (this.verificarSeSimboloAtualEIgualA(tiposDeSimbolos.PONTO)) {
+                const nome = this.consumir(
+                    tiposDeSimbolos.IDENTIFICADOR,
+                    "Esperado nome do método após '.'."
+                );
+                expressao = new AcessoMetodoOuPropriedade(-1, expressao, nome);
+            } else if (this.verificarSeSimboloAtualEIgualA(tiposDeSimbolos.COLCHETE_ESQUERDO)) {
+                const indice = this.ou();
+                const simboloFechamento = this.consumir(
+                    tiposDeSimbolos.COLCHETE_DIREITO,
+                    "Esperado ']' após escrita do indice."
+                );
+                expressao = new AcessoIndiceVariavel(-1, expressao, indice, simboloFechamento);
+            } else {
+                break;
+            }
+        }
+
+        return expressao;
+    }
+
+    multiplicar(): ConstrutoInterface {
+        let expressao = this.exponenciacao();
+
+        while (
+            this.verificarSeSimboloAtualEIgualA(
+                tiposDeSimbolos.MULTIPLICACAO,
+                tiposDeSimbolos.DIVISAO,
+                tiposDeSimbolos.MODULO,
+                tiposDeSimbolos.DIVISAO_INTEIRA
+            )
+        ) {
+            const operador = this.simbolos[this.atual - 1];
+            const direito = this.exponenciacao();
+            expressao = new Binario(-1, expressao, operador, direito);
+        }
+
+        return expressao;
+    }
+
+    override unario(): ConstrutoInterface {
+        if (this.verificarSeSimboloAtualEIgualA(tiposDeSimbolos.INTERROGACAO)) {
+            const operador = this.simbolos[this.atual - 1];
+            const direito = this.unario();
+            this.erro(operador, "O símbolo '?' não é um operador válido em Pituguês.");
+            return direito;
+        }
+
+        if (
+            this.verificarSeSimboloAtualEIgualA(
+                tiposDeSimbolos.NEGACAO,
+                tiposDeSimbolos.SUBTRACAO,
+                tiposDeSimbolos.BIT_NOT
+            )
+        ) {
+            const operador = this.simbolos[this.atual - 1];
+            const direito = this.unario();
+            return new Unario(-1, operador, direito, 'ANTES');
+        }
+
+        return this.chamar();
+    }
+
+    override exponenciacao(): ConstrutoInterface {
+        let expressao = this.unario();
+
+        while (this.verificarSeSimboloAtualEIgualA(tiposDeSimbolos.EXPONENCIACAO)) {
+            const operador = this.simbolos[this.atual - 1];
+            const direito = this.exponenciacao();
+            expressao = new Binario(-1, expressao, operador, direito);
+        }
+
+        return expressao;
+    }
+
+    adicaoOuSubtracao(): ConstrutoInterface {
+        let expressao = this.multiplicar();
+
+        while (
+            this.verificarSeSimboloAtualEIgualA(tiposDeSimbolos.ADICAO, tiposDeSimbolos.SUBTRACAO)
+        ) {
+            const operador = this.simbolos[this.atual - 1];
+            const direito = this.multiplicar();
+            expressao = new Binario(-1, expressao, operador, direito);
+        }
+
+        return expressao;
+    }
+
+    protected bitShift(): ConstrutoInterface {
+        let expressao = this.adicaoOuSubtracao();
+
+        while (
+            this.verificarSeSimboloAtualEIgualA(
+                tiposDeSimbolos.MENOR_MENOR,
+                tiposDeSimbolos.MAIOR_MAIOR
+            )
+        ) {
+            const operador = this.simbolos[this.atual - 1];
+            const direito = this.adicaoOuSubtracao();
+            expressao = new Binario(-1, expressao, operador, direito);
+        }
+
+        return expressao;
+    }
+
+    protected bitE(): ConstrutoInterface {
+        let expressao = this.bitShift();
+
+        while (this.verificarSeSimboloAtualEIgualA(tiposDeSimbolos.BIT_AND)) {
+            const operador = this.simbolos[this.atual - 1];
+            const direito = this.bitShift();
+            expressao = new Binario(-1, expressao, operador, direito);
+        }
+
+        return expressao;
+    }
+
+    protected bitOu(): ConstrutoInterface {
+        let expressao = this.bitE();
+
+        while (
+            this.verificarSeSimboloAtualEIgualA(tiposDeSimbolos.BIT_OR, tiposDeSimbolos.BIT_XOR)
+        ) {
+            const operador = this.simbolos[this.atual - 1];
+            const direito = this.bitE();
+            expressao = new Binario(-1, expressao, operador, direito);
+        }
+
+        return expressao;
+    }
+
+    override comparar(): ConstrutoInterface {
+        let expressao = this.bitOu();
+
+        while (
+            this.verificarSeSimboloAtualEIgualA(
+                tiposDeSimbolos.MAIOR,
+                tiposDeSimbolos.MAIOR_IGUAL,
+                tiposDeSimbolos.MENOR,
+                tiposDeSimbolos.MENOR_IGUAL
+            )
+        ) {
+            const operador = this.simbolos[this.atual - 1];
+            const direito = this.bitOu();
+            expressao = new Binario(-1, expressao, operador, direito);
+        }
+
+        return expressao;
+    }
+
+    protected em(): ConstrutoInterface {
+        let expressao = this.comparacaoIgualdade();
+
+        while (this.verificarSeSimboloAtualEIgualA(tiposDeSimbolos.EM)) {
+            const operador = this.simbolos[this.atual - 1];
+            const direito = this.comparacaoIgualdade();
+            expressao = new Logico(-1, expressao, operador, direito);
+        }
+
+        return expressao;
+    }
+
+    override e(): ConstrutoInterface {
+        let expressao = this.em();
+
+        while (this.verificarSeSimboloAtualEIgualA(tiposDeSimbolos.E)) {
+            const operador = this.simbolos[this.atual - 1];
+            const direito = this.em();
+            expressao = new Logico(-1, expressao, operador, direito);
+        }
+
+        return expressao;
+    }
+
+    ou(): ConstrutoInterface {
+        let expressao = this.e();
+
+        while (this.verificarSeSimboloAtualEIgualA(tiposDeSimbolos.OU)) {
+            const operador = this.simbolos[this.atual - 1];
+            const direito = this.e();
+            expressao = new Logico(-1, expressao, operador, direito);
+        }
+
+        return expressao;
+    }
+
+    atribuir(): ConstrutoInterface {
+        return this.ou();
+    }
+
+    expressao(): ConstrutoInterface {
+        return this.atribuir();
+    }
+
+    analisar(
+        retornoLexador: RetornoLexadorInterface<SimboloInterface>,
+        linha: number
+    ): RetornoAvaliadorSintaticoInterface<Declaracao> {
+        this.erros = [];
+        this.atual = 0;
+        this.linha = linha;
+
+        this.simbolos = retornoLexador?.simbolos || [];
+
+        const declaracoes: Declaracao[] = [];
+        while (this.atual < this.simbolos.length) {
+            const expressao = this.expressao();
+            declaracoes.push(new Expressao(expressao));
+        }
+
+        return {
+            declaracoes: declaracoes,
+            erros: this.erros,
+        } as RetornoAvaliadorSintaticoInterface<Declaracao>;
+    }
+}
